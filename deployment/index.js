@@ -1,51 +1,46 @@
-const fs = require('fs');
+const express = require('express');
+const mongoose = require('mongoose');
 const path = require('path');
-const dotenv = require('dotenv');
-const { exec } = require('child_process');
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Load environment variables from .env file
-dotenv.config();
+// Middleware for parsing JSON
+app.use(express.json());
 
-// Define paths
-const clientBuildPath = path.join(__dirname, '../client/build');
-const serverPath = path.join(__dirname, '../server');
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, '../client/build')));
 
-// Function to build the React app
-function buildReactApp() {
-    return new Promise((resolve, reject) => {
-        exec('npm run build', { cwd: path.join(__dirname, '../client') }, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Error building React app: ${stderr}`);
-                return reject(error);
-            }
-            console.log(`React app built successfully: ${stdout}`);
-            resolve();
-        });
-    });
-}
+// MongoDB connection
+const mongoURI = process.env.MONGODB_URI || 'your_mongodb_connection_string';
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-// Function to copy build files to server
-function copyBuildFiles() {
-    return new Promise((resolve, reject) => {
-        fs.copyFileSync(path.join(clientBuildPath, 'index.html'), path.join(serverPath, 'views', 'index.html'));
-        fs.copyFileSync(path.join(clientBuildPath, 'static', 'css', 'main.css'), path.join(serverPath, 'public', 'css', 'main.css'));
-        fs.copyFileSync(path.join(clientBuildPath, 'static', 'js', 'main.js'), path.join(serverPath, 'public', 'js', 'main.js'));
-        console.log('Build files copied to server.');
-        resolve();
-    });
-}
-
-// Function to prepare deployment
-async function prepareDeployment() {
+// API routes
+app.get('/api/data', async (req, res) => {
     try {
-        await buildReactApp();
-        await copyBuildFiles();
-        console.log('Deployment preparation completed successfully.');
+        // Fetch data from MongoDB
+        const data = await YourModel.find();
+        res.json(data);
     } catch (error) {
-        console.error('Deployment preparation failed:', error);
-        process.exit(1);
+        console.error('Error fetching data:', error);
+        res.status(500).send('Server error');
     }
-}
+});
 
-// Execute deployment preparation
-prepareDeployment();
+// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
+});
+
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
+// Deployment script for Heroku
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, '../client/build')));
+} else {
+    app.use(express.static(path.join(__dirname, '../client/public')));
+}
